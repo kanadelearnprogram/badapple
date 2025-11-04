@@ -1,41 +1,36 @@
 name: Bad Apple Build & Test
 
-# 触发条件：推送代码、提交PR时执行
 on:
   push:
-    branches: [ main ]  # 你的仓库主分支名，按需修改
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
-# 运行环境：选择最新的Ubuntu（兼容SDL2和ffmpeg）
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 步骤1：拉取仓库代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 步骤2：安装项目依赖（gcc、SDL2、ffmpeg等）
-      - name: Install dependencies
+      - name: Install dependencies (fix apt warnings & missing package)
         run: |
-          sudo apt update
-          # 基础编译工具
-          sudo apt install -y gcc git make
-          # SDL2核心依赖（音频播放必需）
-          sudo apt install -y libsdl2-dev libsdl2-alsa-dev
-          # ffmpeg（音视频转换必需）
-          sudo apt install -y ffmpeg
+          # 优化apt命令：-yq 自动确认+减少输出，消除稳定CLI警告
+          sudo apt update -yq
+          # 1. 基础编译工具（已存在但显式安装更稳妥）
+          sudo apt install -yq gcc git make
+          # 2. SDL2核心依赖：删除libSDL2-alsa-dev（新版已合并到libSDL2-dev）
+          sudo apt install -yq libsdl2-dev
+          # 3. ffmpeg（音视频转换必需）
+          sudo apt install -yq ffmpeg
 
-      # 步骤3：清理旧文件 + 编译项目（核心步骤，删除了./configure）
       - name: Build project
         run: |
-          make clean  # 清理残留编译文件
-          make        # 用Makefile编译，自动处理音视频转换和代码编译
+          make clean
+          make
 
-      # 步骤4：可选测试（如果需要在Action中运行播放，可保留；仅编译验证可删除）
-      - name: Test build (optional)
+      - name: Verify build success
         run: |
-          echo "编译完成，生成的可执行文件：$(ls -l bad-apple-sync)"
-          # 注：GitHub Action环境无音频输出，无法实际播放，仅验证编译成功即可
+          echo "✅ 编译完成，产物信息："
+          ls -l bad-apple-sync  # 验证可执行文件是否生成
