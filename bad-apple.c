@@ -17,7 +17,7 @@
 #define CHAR_BLACK '#'
 
 // 嵌入的音视频数据（来自 resources.S）
-extern uint8_t video_payload, video_payload_end;
+extern uint8_t video_payload, video_payload_end; // 数据的起始和结束地址
 extern uint8_t audio_payload, audio_payload_end;
 
 // 视频帧结构体（1位/像素，黑白位图）
@@ -34,7 +34,11 @@ static SDL_mutex* sdl_audio_mutex = NULL;
 static SDL_cond* sdl_audio_cond = NULL;  
 static bool sdl_audio_running = false;   // 音频播放状态
 
-// 1. 提取像素位（无 AM 依赖）
+// 在文件全局变量区域添加
+static char last_frame[VIDEO_ROW * VIDEO_COL] = {0};  // 存储上一帧的字符状态
+static bool is_first_frame = true;  // 标记是否为第一帧（首次需要全量绘制）
+
+// 1. 提取像素位
 static uint8_t get_pixel(const uint8_t* p, int idx) {
     int byte_idx = idx / 8;
     int bit_idx = 7 - (idx % 8);  // 位序翻转，匹配 monow 格式
@@ -43,16 +47,38 @@ static uint8_t get_pixel(const uint8_t* p, int idx) {
 
 // 2. 命令行绘制字符画帧（ANSI 序列，无 AM 依赖）
 static void draw_frame(const frame_t* frame) {
-    printf("\033[H\033[J");  // 清屏 + 光标归位（所有终端支持）
-    for (int y = 0; y < VIDEO_ROW; y++) {
-        for (int x = 0; x < VIDEO_COL; x++) {
-            int pixel_idx = y * VIDEO_COL + x;
-            uint8_t pixel = get_pixel(frame->pixel, pixel_idx);
-            putchar(pixel ? CHAR_BLACK : CHAR_WHITE);
+    // 第一帧需要全量绘制（初始化 last_frame）
+    if (is_first_frame) {
+        printf("\033[H\033[J");  // 清屏+光标归位（仅第一帧执行）
+        for (int y = 0; y < VIDEO_ROW; y++) {
+            for (int x = 0; x < VIDEO_COL; x++) {
+                int pixel_idx = y * VIDEO_COL + x;
+                uint8_t pixel = get_pixel(frame->pixel, pixel_idx);
+                char c = pixel ? CHAR_BLACK : CHAR_WHITE;
+                putchar(c);
+                last_frame[pixel_idx] = c;  // 初始化上一帧数据
+            }
+            putchar('\n');
         }
-        putchar('\n');
+        is_first_frame = false;
+    } else {
+        // 非第一帧：仅更新差异位置
+        for (int y = 0; y < VIDEO_ROW; y++) {
+            for (int x = 0; x < VIDEO_COL; x++) {
+                int pixel_idx = y * VIDEO_COL + x;
+                uint8_t pixel = get_pixel(frame->pixel, pixel_idx);
+                char current_c = pixel ? CHAR_BLACK : CHAR_WHITE;
+                
+                // 对比上一帧，仅差异位置需要重绘
+                if (current_c != last_frame[pixel_idx]) {
+                    // ANSI 光标定位：\033[行;列H（行/列从1开始）
+                    printf("\033[%d;%dH%c", y + 1, x + 1, current_c);
+                    last_frame[pixel_idx] = current_c;  // 更新上一帧数据
+                }
+            }
+        }
     }
-    fflush(stdout);  // 强制刷新，避免帧卡顿
+    fflush(stdout);  // 强制刷新输出缓冲区
 }
 
 // 3. SDL 音频回调函数（更新播放进度，用于同步）
