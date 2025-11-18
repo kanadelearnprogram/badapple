@@ -9,7 +9,7 @@
 sudo apt update && sudo apt install -y gcc git make
 
 # 2. SDL2 核心依赖（音频播放核心，必须安装）
-sudo apt install -y libsdl2-dev libsdl2-alsa-dev
+sudo apt install -y libsdl2-dev libsdl2-alsa-dev libsdl2-2.0-0
 
 # 3. ffmpeg（自动转换音视频为裸流，用于嵌入程序）
 sudo apt install -y ffmpeg
